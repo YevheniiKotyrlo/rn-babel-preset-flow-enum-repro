@@ -2,7 +2,9 @@
  * Bundles enum/index.js with this app's metro.config.js and babel.config.js
  * (`presets: ['module:@react-native/babel-preset']`), prints the bundled
  * enum/Status.js module, runs the bundle in a new Node process and prints what
- * it printed.
+ * it printed. Then bundles enum/virtual-view.js, which imports VirtualViewMode
+ * from react-native, and prints the lines of react-native's bundled
+ * VirtualView.js that name its two Flow enums.
  *
  * Exit status: 1 while the bundle reads `Status` without declaring it, 0 once
  * the enum is declared and the bundle prints `Status.getName(initial): Active`,
@@ -20,6 +22,7 @@ const path = require('node:path');
 
 const appDir = __dirname;
 const out = path.join(appDir, 'build', 'enum.bundle.js');
+const virtualViewOut = path.join(appDir, 'build', 'virtual-view.bundle.js');
 
 function version(name) {
   return require(path.join(appDir, 'node_modules', name, 'package.json'))
@@ -75,7 +78,10 @@ async function main() {
 
   console.log(`\n$ node ${path.relative(appDir, out)}`);
   const run = spawnSync(process.execPath, [out], {encoding: 'utf8'});
-  const printed = `${run.stdout}${run.stderr}`.trim();
+  const printed = `${run.stdout}${run.stderr}`
+    .split(appDir)
+    .join('.')
+    .trim();
   const shown = printed
     .split('\n')
     .filter(line => !/^\s+at /.test(line))
@@ -84,29 +90,66 @@ async function main() {
   console.log(`(exit ${run.status})`);
 
   const declared = /\bStatus =/.test(statusModule);
+
+  await Metro.runBuild(config, {
+    entry: path.join(appDir, 'enum', 'virtual-view.js'),
+    platform: 'android',
+    dev: false,
+    minify: false,
+    out: virtualViewOut,
+  });
+  console.log(
+    '\n$ metro build enum/virtual-view.js --platform android --dev false --minify false',
+  );
+  console.log(`wrote ${path.relative(appDir, virtualViewOut)}`);
+  const virtualViewModule = fs
+    .readFileSync(virtualViewOut, 'utf8')
+    .split(/\n(?=__d\()/)
+    .find(chunk => /VirtualViewMode\.cast\(/.test(chunk));
+  if (virtualViewModule == null) {
+    verdict(2, "FAILED: the bundle holds no react-native VirtualView.js module");
+  }
+  console.log(
+    "\nreact-native's VirtualView.js in the bundle, its lines that name VirtualViewMode or VirtualViewRenderState:",
+  );
+  console.log(
+    virtualViewModule
+      .split('\n')
+      .filter(line => /VirtualViewMode|VirtualViewRenderState/.test(line))
+      .map(line => line.trim())
+      .join('\n'),
+  );
+  const virtualViewDeclared =
+    /\bVirtualViewMode =/.test(virtualViewModule) &&
+    /\bVirtualViewRenderState =/.test(virtualViewModule);
+  console.log(
+    `VirtualViewMode and VirtualViewRenderState declared: ${virtualViewDeclared ? 'yes' : 'no'}`,
+  );
   if (
     run.status === 0 &&
     declared &&
+    virtualViewDeclared &&
     /^Status\.getName\(initial\): Active$/m.test(run.stdout)
   ) {
     verdict(
       0,
-      'PASS: @react-native/babel-preset declared the Flow enum `Status` and the bundle printed Status.getName(initial): Active',
+      'PASS: @react-native/babel-preset declared the Flow enum `Status`, the bundle printed Status.getName(initial): Active, and VirtualView.js declares VirtualViewMode and VirtualViewRenderState',
     );
   }
   if (
     run.status !== 0 &&
     !declared &&
+    !virtualViewDeclared &&
     /ReferenceError: Status is not defined/.test(run.stderr)
   ) {
     verdict(
       1,
-      'FAIL: @react-native/babel-preset removed the Flow enum declaration `enum Status {Active, Off}`, so the bundle throws ReferenceError: Status is not defined',
+      "FAIL: @react-native/babel-preset removed the Flow enum declaration `enum Status {Active, Off}`, so the bundle throws ReferenceError: Status is not defined; react-native's own VirtualView.js bundles with VirtualViewMode and VirtualViewRenderState read and never declared",
     );
   }
   verdict(
     2,
-    `FAILED: the run ended another way (exit ${run.status}, enum declared: ${declared})`,
+    `FAILED: the run ended another way (exit ${run.status}, Status declared: ${declared}, VirtualView enums declared: ${virtualViewDeclared})`,
   );
 }
 
