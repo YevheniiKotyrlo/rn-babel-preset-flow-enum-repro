@@ -2,78 +2,17 @@
 
 ![Build](https://github.com/YevheniiKotyrlo/rn-babel-preset-flow-enum-repro/workflows/Pre%20Merge%20Checks/badge.svg)
 
-This is your new React Native Reproducer project.
+ReproducerApp on React Native `0.90.0-nightly-20261116-a1b2862a5` (`main` at a1b2862a5), with its `babel.config.js` as the template has it, `presets: ['module:@react-native/babel-preset']`, and two files that use a Flow enum:
 
-# Reproducer TODO list
+- `ReproducerApp/enum/Status.js` declares `export enum Status {Active, Off}` and exports `initial = Status.Active`.
+- `ReproducerApp/enum/index.js` imports both and logs `Status.getName(initial)`.
 
-- [x] 1. Create a new reproducer project.
-- [ ] 2. Git clone your repository locally.
-- [ ] 3. Edit the project to reproduce the failure you're seeing.
-- [ ] 4. Push your changes, so that Github Actions can run the CI.
-- [ ] 5. Make sure the repository is public and share the link with the issue you reported.
-
-# How to use this Reproducer
-
-This project has been created with `npx @react-native-community/cli init` and is a vanilla React Native app.
-
-> [!IMPORTANT]  
-> Make sure you have completed the [React Native - Environment Setup](https://reactnative.dev/docs/set-up-your-environment) so that you have a working environment locally.
-
-## Step 1: Start the Metro Server
-
-First, you will need to start **Metro**, the JavaScript _bundler_ that ships _with_ React Native.
-
-To start Metro, run the following command from the _root_ of your React Native project:
+## Reproduce
 
 ```bash
-# using npm
-npm start
-
-# OR using Yarn
-yarn start
+./reproduce.sh
 ```
 
-## Step 2: Start your Application
+It runs `yarn install` in `ReproducerApp`, then `node reproduce.js`, which bundles `enum/index.js` with Metro and the app's `metro.config.js` (Android, release, not minified), prints the bundled `enum/Status.js` module, runs the bundle with Node and prints what it printed. It exits 1 while the enum's declaration is missing from the bundle and the run throws `ReferenceError: Status is not defined`, 0 once the bundle prints `Status.getName(initial): Active`, and 2 when a step fails or the run ends another way.
 
-Let Metro Bundler run in its _own_ terminal. Open a _new_ terminal from the _root_ of your React Native project. Run the following command to start your _Android_ or _iOS_ app:
-
-### For Android
-
-```bash
-# using npm
-npm run android
-
-# OR using Yarn
-yarn android
-```
-
-### For iOS
-
-First, make sure you install dependencies with:
-
-```bash
-cd ios && bundle install && bundle exec pod install
-```
-
-Then you can run the iOS app with:
-
-```bash
-# using npm
-npm run ios
-
-# OR using Yarn
-yarn ios
-```
-
-If everything is set up _correctly_, you should see your new app running in your _Android Emulator_ or _iOS Simulator_ shortly provided you have set up your emulator/simulator correctly.
-
-This is one way to run your app — you can also run it directly from within Android Studio and Xcode respectively.
-
-## Step 3: Modifying your App
-
-Now that you have successfully run the app, let's modify it.
-
-1. Open `App.tsx` in your text editor of choice and edit some lines.
-2. For **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Developer Menu** (<kbd>Ctrl</kbd> + <kbd>M</kbd> (on Window and Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (on macOS)) to see your changes!
-
-   For **iOS**: Hit <kbd>Cmd ⌘</kbd> + <kbd>R</kbd> in your iOS Simulator to reload the app and see your changes!
+Expected: `Status` is declared through `flow-enums-runtime`, and the bundle prints `Status.getName(initial): Active`. Seen: the bundled module reads `Status.Active` with no `Status` declared, and the bundle throws `ReferenceError: Status is not defined`.
